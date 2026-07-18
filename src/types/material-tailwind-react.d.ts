@@ -1,0 +1,55 @@
+declare module '@material-tailwind/react' {
+  const anyExport: any
+  export default anyExport
+  export const ThemeProvider: any
+  export const Navbar: any
+  export const Typography: any
+  export const Button: any
+  export const IconButton: any
+  export const Collapse: any
+  export const Menu: any
+  export const MenuHandler: any
+  export const MenuList: any
+  export const MenuItem: any
+  export const Avatar: any
+  export const Chip: any
+  export const Input: any
+  export const Textarea: any
+  export const Select: any
+  export const Dialog: any
+  export const DialogHeader: any
+  export const DialogBody: any
+  export const DialogFooter: any
+  export const Card: any
+  export const CardBody: any
+  export const CardHeader: any
+  export const CardFooter: any
+  export const Option: any
+  export const Alert: any
+  export const Tabs: any
+  export const TabsHeader: any
+  export const TabsBody: any
+  export const Tab: any
+  export const TabPanel: any
+  export const Checkbox: any
+  export const Switch: any
+  export const Tooltip: any
+  export const List: any
+  export const ListItem: any
+  export const ListItemPrefix: any
+  export const ListItemSuffix: any
+  export const Accordion: any
+  export const AccordionHeader: any
+  export const AccordionBody: any
+  export const ButtonGroup: any
+  export const Carousel: any
+  export const Drawer: any
+  export const Badge: any
+  export const Progress: any
+  export const Radio: any
+  export const Slider: any
+  export const Spinner: any
+  export const Timeline: any
+  export const Stepper: any
+  export const SpeedDial: any
+}
