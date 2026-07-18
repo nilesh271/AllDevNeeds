@@ -568,7 +568,7 @@ export default function CodeSharingPage() {
                       fullWidth
                       className="bg-violet-600 hover:bg-violet-700 text-white font-bold flex items-center justify-center gap-2 py-2 shadow-none hover:shadow-sm"
                       onClick={() => {
-                        const shareUrl = `${window.location.origin}/code?session=${sessionId}`
+                        const shareUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`
                         navigator.clipboard.writeText(shareUrl)
                         setCopiedLink(true)
                         setTimeout(() => setCopiedLink(false), 1500)
