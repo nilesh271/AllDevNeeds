@@ -34,9 +34,8 @@ jobs:
       - name: Build with Environment Variables
         run: npm run build
         env:
-          # Injecting repository variables and secrets into the build step
           VITE_SUPABASE_API_URL: ${{ secrets.VITE_SUPABASE_API_URL }} 
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
