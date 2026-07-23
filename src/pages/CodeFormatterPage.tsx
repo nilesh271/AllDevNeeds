@@ -24,7 +24,7 @@ export default function CodeFormatterPage() {
   const [language, setLanguage] = useState('javascript')
   const [value, setValue] = useState(SAMPLES.javascript)
   const [copied, setCopied] = useState(false)
-  
+
   // Editor Settings
   const [tabSize, setTabSize] = useState<number>(2)
   const [wordWrap, setWordWrap] = useState<'on' | 'off'>('on')
@@ -118,6 +118,56 @@ export default function CodeFormatterPage() {
     setValue(SAMPLES[lang] || '')
   }
 
+  const handleLanguageChange = (newLang: string) => {
+    const previousSample = SAMPLES[language]?.trim()
+    const currentValue = value?.trim()
+
+    setLanguage(newLang)
+
+    // Load sample ONLY if current text is empty OR matches the previous language's sample
+    if (!currentValue || currentValue === previousSample) {
+      setValue(SAMPLES[newLang] || '')
+    }
+  }
+
+  const handleTabSizeChange = (newSize: number) => {
+    setTabSize(newSize)
+    
+    // Update Monaco editor options & model options dynamically
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        tabSize: newSize,
+        detectIndentation: false
+      })
+      const model = editorRef.current.getModel()
+      if (model) {
+        model.updateOptions({
+          tabSize: newSize,
+          indentSize: newSize,
+          insertSpaces: true
+        })
+      }
+    }
+
+    // Trigger format document with new tab size immediately
+    setTimeout(() => {
+      if (language === 'sql') {
+        try {
+          const formatted = formatSql(value, {
+            language: 'sql',
+            tabWidth: newSize,
+            keywordCase: 'upper'
+          })
+          setValue(formatted)
+        } catch (err) {
+          console.error(err)
+        }
+      } else if (editorRef.current) {
+        editorRef.current.getAction('editor.action.formatDocument')?.run()
+      }
+    }, 50)
+  }
+
   return (
     <div className="page-container px-4 pb-10 sm:px-6 lg:px-8">
       <div className="flex items-start gap-3">
@@ -149,12 +199,7 @@ export default function CodeFormatterPage() {
                 <Select
                   label="Select Language"
                   value={language}
-                  onChange={(v) => {
-                    if (v) {
-                      setLanguage(v);
-                      handleLoadSample(v);
-                    }
-                  }}
+                  onChange={(v) => v && handleLanguageChange(v)}
                   menuProps={{ className: 'dark:bg-gray-800 dark:border-gray-700 dark:text-white' }}
                   className="dark:text-white"
                   labelProps={{ className: 'dark:text-gray-400' }}
@@ -174,7 +219,7 @@ export default function CodeFormatterPage() {
                 <Select
                   label="Tab Spaces"
                   value={String(tabSize)}
-                  onChange={(v) => v && setTabSize(Number(v))}
+                  onChange={(v) => v && handleTabSizeChange(Number(v))}
                   menuProps={{ className: 'dark:bg-gray-800 dark:border-gray-700 dark:text-white' }}
                   className="dark:text-white"
                   labelProps={{ className: 'dark:text-gray-400' }}
@@ -274,11 +319,10 @@ export default function CodeFormatterPage() {
                     size="sm"
                     onClick={handleCopy}
                     disabled={!value}
-                    className={`flex items-center gap-1.5 py-1.5 px-4 text-xs font-bold rounded-lg transition-colors ${
-                      copied 
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm' 
+                    className={`flex items-center gap-1.5 py-1.5 px-4 text-xs font-bold rounded-lg transition-colors ${copied
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                         : 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {copied ? <BsCheck2 className="h-4 w-4" /> : <BsClipboard className="h-4 w-4" />}
                     {copied ? 'Copied' : 'Copy'}
@@ -298,6 +342,7 @@ export default function CodeFormatterPage() {
                   options={{
                     tabSize: tabSize,
                     insertSpaces: true,
+                    detectIndentation: false,
                     wordWrap: wordWrap,
                     lineNumbers: lineNumbers,
                     minimap: { enabled: minimap },

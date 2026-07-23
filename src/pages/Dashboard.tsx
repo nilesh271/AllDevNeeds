@@ -60,9 +60,9 @@ const sections: { name: string; icon: IconType; tools: Tool[] }[] = [
         accent: 'text-amber-500 bg-amber-50 dark:bg-amber-500/10' 
       },
       { 
-        name: 'JSON Formatter', 
-        description: 'Validate syntax structural integrity, beautify tree spacing, check depth/size, or minify raw JSON objects.', 
-        path: '/json-formatter', 
+        name: 'JSON Diff & Formatter', 
+        description: 'Validate syntax structural integrity, format, minify, and compare two JSON files to highlight differences side by side.', 
+        path: '/json-diff', 
         icon: BsBraces, 
         accent: 'text-blue-500 bg-blue-50 dark:bg-blue-500/10' 
       },

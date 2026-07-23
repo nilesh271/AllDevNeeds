@@ -14,7 +14,7 @@ const NAV_LINKS = [
   { label: 'Dev Tools', path: '/dev-tools' },
   { label: 'Code Share', path: '/code' },
   { label: 'Notes', path: '/notes' },
-  { label: 'Files', path: '/files' },
+  { label: 'Files', path: '/files', protected: true },
   { label: 'Learning', path: '/learning', protected: true },
   {
     label: 'Tools', children: [

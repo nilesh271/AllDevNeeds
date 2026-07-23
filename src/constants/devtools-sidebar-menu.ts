@@ -49,8 +49,8 @@ export const DEVTOOLS_SIDEBAR_MENU = [
       },
       {
         id: 'jsonFormatter',
-        label: 'JSON Formatter',
-        path: '/json-formatter'
+        label: 'JSON Diff',
+        path: '/json-diff'
       },
       {
         id: 'codeFormatter',

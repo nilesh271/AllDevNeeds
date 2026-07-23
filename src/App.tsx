@@ -24,7 +24,7 @@ import UuidGeneratorPage from './pages/UuidGeneratorPage'
 import HashGeneratorPage from './pages/HashGeneratorPage'
 import TextCaseConverterPage from './pages/TextCaseConverterPage'
 import TextFormatterPage from './pages/TextFormatterPage'
-import JsonFormatterPage from './pages/JsonFormatterPage'
+import JsonDiffPage from './pages/JsonDiffPage'
 import CodeFormatterPage from './pages/CodeFormatterPage'
 import QrCodeGeneratorPage from './pages/QrCodeGeneratorPage'
 import UrlParserPage from './pages/UrlParserPage'
@@ -40,15 +40,13 @@ export default function App() {
         {/* <Route path="/signup" element={isAuthenticated ? <Navigate to="/" replace /> : <SignupPage />} /> */}
         <Route path="/code" element={<CodeSharingPage />} />
         <Route path="/notes" element={<StickyNotesPage />} />
-        <Route path="/files" element={<FileUploadPage />} />
-        
         <Route path="/video-downloader" element={<VideoDownloaderPage />} />
-        
-        
+
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/learning/:id" element={<LearningDetailPage />} />
+          <Route path="/files" element={<FileUploadPage />} />
         </Route>
 
         {/* Admin routes */}
@@ -67,7 +65,7 @@ export default function App() {
         <Route path="/hash-generator" element={<HashGeneratorPage />} />
         <Route path="/text-case-converter" element={<TextCaseConverterPage />} />
         <Route path="/text-formatter" element={<TextFormatterPage />} />
-        <Route path="/json-formatter" element={<JsonFormatterPage />} />
+        <Route path="/json-diff" element={<JsonDiffPage />} />
         <Route path="/code-formatter" element={<CodeFormatterPage />} />
         <Route path="/qr-generator" element={<QrCodeGeneratorPage />} />
         <Route path="/url-parser" element={<UrlParserPage />} />
