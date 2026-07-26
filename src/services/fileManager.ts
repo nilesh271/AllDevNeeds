@@ -4,6 +4,7 @@ import { FileRecord, StorageProvider } from "../store/filesSlice";
 
 const EDGE_FUNCTION_URL = import.meta.env.VITE_EDGE_FUNCTION_URL || "";
 const DEFAULT_BUCKET = "files";
+const GCP_STORAGE_API_URL = import.meta.env.VITE_GCP_STORAGE_API_URL || "http://localhost:8080";
 
 export interface FetchFilesOptions {
   bucket?: string;
@@ -53,16 +54,63 @@ export const createFolderInSupabase = async (
 export const uploadFilesToStorage = async (
   files: File[],
   provider: StorageProvider = "supabase",
-  targetFolder = "files",
+  targetFolder = "/",
   bucket = DEFAULT_BUCKET
 ): Promise<FileRecord[]> => {
+  if (provider === "google-drive") {
+    const uploadedRecords: FileRecord[] = [];
+    const cleanFolder = targetFolder.trim().replace(/^\/+|\/+$/g, "") || "/";
+    
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const headers: HeadersInit = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["Authorization"] = `Bearer bypass`;
+    }
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const folderParam = cleanFolder === "/" ? "" : `${cleanFolder}/`;
+      const uploadUrl = `${GCP_STORAGE_API_URL}/?operation=UPLOAD&folder=${encodeURIComponent(folderParam)}`;
+
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Google Drive upload failed: ${res.statusText}`);
+      }
+
+      const json = await res.json();
+      uploadedRecords.push({
+        id: json.id,
+        name: file.name,
+        size: file.size,
+        type: file.type || "application/octet-stream",
+        storage: "google-drive",
+        path: json.path,
+        folder: cleanFolder,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    return uploadedRecords;
+  }
+
   if (provider === "supabase") {
     const uploadedRecords: FileRecord[] = [];
-    const cleanFolder = targetFolder.trim().replace(/^\/+|\/+$/g, "") || "files";
+    const cleanFolder = targetFolder.trim().replace(/^\/+|\/+$/g, "") || "/";
 
     for (const file of files) {
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
-      const filePath = `${cleanFolder}/${Date.now()}-${sanitizedName}`;
+      const filePath = cleanFolder === "/" ? `${Date.now()}-${sanitizedName}` : `${cleanFolder}/${Date.now()}-${sanitizedName}`;
 
       const { data, error } = await supabase.storage
         .from(bucket)
@@ -180,7 +228,7 @@ export const fetchFilesFromSupabase = async (
       }
       discoveredFolders.add(folder);
     } else {
-      const targetFolders = foldersToScan.length > 0 ? foldersToScan : ["files"];
+      const targetFolders = foldersToScan.length > 0 ? foldersToScan : ["/"];
       await Promise.all(
         targetFolders.map(async (folderPath) => {
           const { data: folderItems } = await supabase.storage.from(bucket).list(folderPath, {
@@ -225,7 +273,7 @@ export const fetchFilesFromSupabase = async (
   const paginatedItems = rawFiles.slice(startIndex, startIndex + limit);
 
   const formattedFiles: FileRecord[] = paginatedItems.map(({ item, folderPath }) => {
-    const fullPath = `${folderPath}/${item.name}`;
+    const fullPath = !folderPath || folderPath === "/" ? item.name : `${folderPath}/${item.name}`;
     const { data: publicUrlData } = supabase.storage.from(bucket).getPublicUrl(fullPath);
 
     return {
@@ -235,7 +283,7 @@ export const fetchFilesFromSupabase = async (
       type: item.metadata?.mimetype || "application/octet-stream",
       storage: "supabase",
       path: fullPath,
-      folder: folderPath,
+      folder: folderPath || "/",
       bucket,
       url: publicUrlData?.publicUrl || "",
       timestamp: item.created_at || new Date().toISOString(),
@@ -250,6 +298,106 @@ export const fetchFilesFromSupabase = async (
 };
 
 /**
+ * Fetch files with server-side search, sorting, and pagination from Google Drive (GCP Storage API)
+ */
+export const fetchFilesFromGoogleDrive = async (
+  options: FetchFilesOptions = {}
+): Promise<FetchFilesResponse> => {
+  const folder = options.folder || "all";
+  const search = options.search?.trim() || "";
+  const page = options.page || 1;
+  const limit = options.limit || 10;
+  const sortByVal = options.sortBy || "date-desc";
+
+  let sortBy = "name";
+  let sortOrder = "asc";
+
+  if (sortByVal === "date-desc") {
+    sortBy = "createdOn";
+    sortOrder = "desc";
+  } else if (sortByVal === "date-asc") {
+    sortBy = "createdOn";
+    sortOrder = "asc";
+  } else if (sortByVal === "name-asc") {
+    sortBy = "name";
+    sortOrder = "asc";
+  } else if (sortByVal === "name-desc") {
+    sortBy = "name";
+    sortOrder = "desc";
+  } else if (sortByVal === "size-desc") {
+    sortBy = "size";
+    sortOrder = "desc";
+  } else if (sortByVal === "size-asc") {
+    sortBy = "size";
+    sortOrder = "asc";
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || "";
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    headers["Authorization"] = `Bearer bypass`;
+  }
+
+  // If folder is "all" or "/", pass empty string to list everything
+  const targetFolder = folder === "all" || folder === "/" ? "" : folder;
+  const folderPrefix = targetFolder ? (targetFolder.endsWith("/") ? targetFolder : `${targetFolder}/`) : "";
+
+  const res = await fetch(`${GCP_STORAGE_API_URL}/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      operation: "LIST",
+      folder: folderPrefix,
+      page,
+      limit,
+      search,
+      sortBy,
+      sortOrder,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Google Drive list failed: ${res.statusText}`);
+  }
+
+  const data = await res.json();
+
+  const formattedFiles: FileRecord[] = (data.files || []).map((file: any) => {
+    let fileFolder = "/";
+    if (file.path && file.path.includes("/")) {
+      const parts = file.path.split("/");
+      fileFolder = parts.slice(0, -1).join("/") || "/";
+    }
+
+    return {
+      id: file.id,
+      name: file.title || file.name || "",
+      size: file.size || 0,
+      type: file.filetype || "application/octet-stream",
+      storage: "google-drive",
+      path: file.path,
+      folder: fileFolder || "/",
+      timestamp: file.createdOn || new Date().toISOString(),
+    };
+  });
+
+  const cleanFolders = (data.folders || []).map((f: string) => f.replace(/\/$/, ""));
+
+  return {
+    files: formattedFiles,
+    folders: cleanFolders,
+    totalCount: data.pagination?.totalItems || formattedFiles.length,
+  };
+};
+
+/**
  * Move file to another existing or new folder in Supabase Storage or Edge Function
  */
 export const moveFileInStorage = async (
@@ -257,8 +405,8 @@ export const moveFileInStorage = async (
   targetFolder: string,
   bucket = DEFAULT_BUCKET
 ): Promise<{ newPath: string; newUrl: string }> => {
-  const cleanTargetFolder = targetFolder.trim().replace(/^\/+|\/+$/g, "") || "files";
-  const currentFolder = file.folder || "files";
+  const cleanTargetFolder = targetFolder.trim().replace(/^\/+|\/+$/g, "") || "/";
+  const currentFolder = file.folder || "/";
 
   if (currentFolder === cleanTargetFolder) {
     return { newPath: file.path || "", newUrl: file.url || "" };
@@ -266,8 +414,8 @@ export const moveFileInStorage = async (
 
   if (file.storage === "supabase") {
     const filename = file.path ? file.path.split("/").pop() || file.name : `${Date.now()}-${file.name}`;
-    const oldPath = file.path || `${currentFolder}/${filename}`;
-    const newPath = `${cleanTargetFolder}/${filename}`;
+    const oldPath = file.path || (currentFolder === "/" ? filename : `${currentFolder}/${filename}`);
+    const newPath = cleanTargetFolder === "/" ? filename : `${cleanTargetFolder}/${filename}`;
 
     const { error } = await supabase.storage.from(bucket).move(oldPath, newPath);
     if (error) {
@@ -280,6 +428,43 @@ export const moveFileInStorage = async (
     return {
       newPath,
       newUrl: publicUrlData?.publicUrl || file.url || "",
+    };
+  }
+
+  if (file.storage === "google-drive") {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["Authorization"] = `Bearer bypass`;
+    }
+
+    const filename = file.path ? file.path.split("/").pop() || file.name : `${Date.now()}-${file.name}`;
+    const destinationPath = cleanTargetFolder === "/" ? filename : `${cleanTargetFolder}/${filename}`;
+
+    const res = await fetch(`${GCP_STORAGE_API_URL}/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operation: "MOVE",
+        sourcePath: file.path,
+        destinationPath,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Google Drive move error: ${res.statusText}`);
+    }
+
+    return {
+      newPath: destinationPath,
+      newUrl: "",
     };
   }
 
@@ -315,7 +500,7 @@ export const getPresignedUrl = async (
   expiresInSeconds = 3600
 ): Promise<string> => {
   if (file.storage === "supabase") {
-    const targetPath = file.path || `${file.folder || "files"}/${file.name}`;
+    const targetPath = file.path || (!file.folder || file.folder === "/" ? file.name : `${file.folder}/${file.name}`);
     const { data, error } = await supabase.storage
       .from(file.bucket || DEFAULT_BUCKET)
       .createSignedUrl(targetPath, expiresInSeconds);
@@ -326,6 +511,49 @@ export const getPresignedUrl = async (
     }
 
     return data.signedUrl;
+  }
+
+  if (file.storage === "google-drive") {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["Authorization"] = `Bearer bypass`;
+    }
+
+    let ttl = "1hr";
+    if (expiresInSeconds <= 900) {
+      ttl = "15min";
+    } else if (expiresInSeconds <= 3600) {
+      ttl = "1hr";
+    } else if (expiresInSeconds <= 86400) {
+      ttl = "1day";
+    } else {
+      ttl = "7days";
+    }
+
+    const res = await fetch(`${GCP_STORAGE_API_URL}/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operation: "GET_SHARED_URL",
+        path: file.path,
+        ttl,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Google Drive shared URL error: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+    return json.sharedUrl;
   }
 
   // Edge Function API Call for Amazon S3 / Google Drive presigned URLs
@@ -359,9 +587,38 @@ export const getPresignedUrl = async (
  */
 export const deleteFileFromStorage = async (file: FileRecord): Promise<void> => {
   if (file.storage === "supabase") {
-    const targetPath = file.path || `${file.folder || "files"}/${file.name}`;
+    const targetPath = file.path || (!file.folder || file.folder === "/" ? file.name : `${file.folder}/${file.name}`);
     const { error } = await supabase.storage.from(file.bucket || DEFAULT_BUCKET).remove([targetPath]);
     if (error) throw error;
+    return;
+  }
+
+  if (file.storage === "google-drive") {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["Authorization"] = `Bearer bypass`;
+    }
+
+    const res = await fetch(`${GCP_STORAGE_API_URL}/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operation: "DELETE",
+        path: file.path,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Google Drive delete error: ${res.statusText}`);
+    }
     return;
   }
 
@@ -386,6 +643,45 @@ export const deleteFileFromStorage = async (file: FileRecord): Promise<void> => 
  * Trigger instant browser download of a file
  */
 export const downloadFileFromStorage = async (file: FileRecord): Promise<void> => {
+  if (file.storage === "google-drive") {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token || "";
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    } else {
+      headers["Authorization"] = `Bearer bypass`;
+    }
+
+    const res = await fetch(`${GCP_STORAGE_API_URL}/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operation: "DOWNLOAD",
+        path: file.path,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Google Drive download failed: ${res.statusText}`);
+    }
+
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = file.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+    return;
+  }
+
   let downloadUrl = file.url;
 
   if (file.storage === "supabase" && file.path) {

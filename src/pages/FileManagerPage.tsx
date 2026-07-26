@@ -15,6 +15,7 @@ import {
 import {
   uploadFilesToStorage,
   fetchFilesFromSupabase,
+  fetchFilesFromGoogleDrive,
   createFolderInSupabase,
   deleteFileFromStorage,
   downloadFileFromStorage,
@@ -25,7 +26,8 @@ import {
   BsCloudUpload, BsSearch, BsDownload, BsLink45Deg, BsTrash, BsGrid3X3Gap, BsListUl,
   BsFileEarmarkPdf, BsFileEarmarkImage, BsFileEarmarkPlay, BsFileEarmarkCode,
   BsFileEarmarkZip, BsFileEarmarkText, BsChevronLeft, BsChevronRight, BsFolderCheck,
-  BsFolderPlus, BsFolderSymlink, BsArrowClockwise, BsFolderFill, BsFolder2Open, BsArrowLeftShort
+  BsFolderPlus, BsFolderSymlink, BsArrowClockwise, BsFolderFill, BsFolder2Open, BsArrowLeftShort,
+  BsDatabaseFill, BsCloudFill
 } from 'react-icons/bs'
 
 const formatSize = (bytes: number) => {
@@ -71,7 +73,22 @@ const getFileIcon = (mimeType: string, filename: string) => {
   return <BsFileEarmarkText className="h-6 w-6 text-gray-500 shrink-0" />
 }
 
-export default function FileUploadPage() {
+const getTabIcon = (key: string, isActive: boolean) => {
+  switch (key) {
+    case 'all':
+      return <BsFolder2Open className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-sky-500'}`} />;
+    case 'supabase':
+      return <BsDatabaseFill className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-emerald-500'}`} />;
+    case 's3':
+      return <BsCloudFill className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-amber-500'}`} />;
+    case 'google-drive':
+      return <BsCloudUpload className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-blue-500'}`} />;
+    default:
+      return null;
+  }
+}
+
+export default function FileManagerPage() {
   const dispatch = useAppDispatch()
   const { files } = useAppSelector(s => s.files)
   const { isAuthenticated } = useAppSelector(s => s.auth)
@@ -103,9 +120,10 @@ export default function FileUploadPage() {
   }
 
   // Dynamic Folder & Navigation State
-  const [discoveredFolders, setDiscoveredFolders] = useState<string[]>([])
+  const [supabaseFolders, setSupabaseFolders] = useState<string[]>([])
+  const [googleDriveFolders, setGoogleDriveFolders] = useState<string[]>([])
   const [selectedFolderFilter, setSelectedFolderFilter] = useState<string>('all')
-  const [targetFolder, setTargetFolder] = useState<string>('files')
+  const [targetFolder, setTargetFolder] = useState<string>('/')
   const [createFolderModalOpen, setCreateFolderModalOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
@@ -114,7 +132,7 @@ export default function FileUploadPage() {
   // Move File State
   const [moveModalOpen, setMoveModalOpen] = useState(false)
   const [fileToMove, setFileToMove] = useState<FileRecord | null>(null)
-  const [moveDestinationFolder, setMoveDestinationFolder] = useState<string>('files')
+  const [moveDestinationFolder, setMoveDestinationFolder] = useState<string>('/')
   const [customMoveFolder, setCustomMoveFolder] = useState<string>('')
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState('')
@@ -171,50 +189,104 @@ export default function FileUploadPage() {
     })
 
     if (activeTab === 'all' || activeTab === 'supabase') {
-      discoveredFolders.forEach(f => folderSet.add(f))
+      supabaseFolders.forEach(f => folderSet.add(f))
+    }
+    if (activeTab === 'all' || activeTab === 'google-drive') {
+      googleDriveFolders.forEach(f => folderSet.add(f))
     }
 
     return Array.from(folderSet)
-  }, [files, activeTab, discoveredFolders])
+  }, [files, activeTab, supabaseFolders, googleDriveFolders])
 
   // Count files per folder for current storage view
   const folderCounts = useMemo(() => {
     const counts: Record<string, number> = {}
     const relevantFiles = activeTab === 'all' ? files : files.filter(f => f.storage === activeTab)
     availableFolders.forEach(folder => {
-      counts[folder] = relevantFiles.filter(f => (f.folder || 'files') === folder).length
+      counts[folder] = relevantFiles.filter(f => (f.folder || '/') === folder).length
     })
     return counts
   }, [files, activeTab, availableFolders])
 
-  // Server-side fetch from Supabase Storage with search, sort, and pagination
-  const syncSupabaseContents = useCallback(async () => {
+  // Server-side fetch from storage providers with search, sort, and pagination
+  const syncAllContents = useCallback(async () => {
     if (!isAuthenticated) return
 
-    const res = await fetchFilesFromSupabase({
-      folder: selectedFolderFilter,
-      search: debouncedSearch,
-      sortBy,
-      page: currentPage,
-      limit: pageSize,
-    })
+    if (activeTab === 'supabase') {
+      const res = await fetchFilesFromSupabase({
+        folder: selectedFolderFilter,
+        search: debouncedSearch,
+        sortBy,
+        page: currentPage,
+        limit: pageSize,
+      })
 
-    if (res.folders.length > 0) {
-      setDiscoveredFolders(Array.from(new Set(res.folders)))
+      if (res.folders.length > 0) {
+        setSupabaseFolders(Array.from(new Set(res.folders)))
+      }
+      setServerTotalCount(res.totalCount)
+
+      const nonSpFiles = filesRef.current.filter(f => f.storage !== 'supabase')
+      dispatch(updateFiles([...res.files, ...nonSpFiles]))
+
+    } else if (activeTab === 'google-drive') {
+      const res = await fetchFilesFromGoogleDrive({
+        folder: selectedFolderFilter,
+        search: debouncedSearch,
+        sortBy,
+        page: currentPage,
+        limit: pageSize,
+      })
+
+      if (res.folders.length > 0) {
+        setGoogleDriveFolders(Array.from(new Set(res.folders)))
+      }
+      setServerTotalCount(res.totalCount)
+
+      const nonGdFiles = filesRef.current.filter(f => f.storage !== 'google-drive')
+      dispatch(updateFiles([...res.files, ...nonGdFiles]))
+
+    } else if (activeTab === 'all') {
+      try {
+        const [supabaseRes, googleDriveRes] = await Promise.all([
+          fetchFilesFromSupabase({
+            folder: selectedFolderFilter,
+            search: debouncedSearch,
+            sortBy,
+            page: currentPage,
+            limit: pageSize,
+          }),
+          fetchFilesFromGoogleDrive({
+            folder: selectedFolderFilter,
+            search: debouncedSearch,
+            sortBy,
+            page: currentPage,
+            limit: pageSize,
+          })
+        ])
+
+        if (supabaseRes.folders.length > 0) {
+          setSupabaseFolders(Array.from(new Set(supabaseRes.folders)))
+        }
+        if (googleDriveRes.folders.length > 0) {
+          setGoogleDriveFolders(Array.from(new Set(googleDriveRes.folders)))
+        }
+
+        setServerTotalCount(supabaseRes.totalCount + googleDriveRes.totalCount)
+
+        const otherFiles = filesRef.current.filter(f => f.storage !== 'supabase' && f.storage !== 'google-drive')
+        dispatch(updateFiles([...supabaseRes.files, ...googleDriveRes.files, ...otherFiles]))
+      } catch (err) {
+        console.error('Failed to fetch combined storage contents:', err)
+      }
     }
-
-    setServerTotalCount(res.totalCount)
-
-    // Update Redux store with latest server results for Supabase
-    const nonSpFiles = filesRef.current.filter(f => f.storage !== 'supabase')
-    dispatch(updateFiles([...res.files, ...nonSpFiles]))
-  }, [selectedFolderFilter, debouncedSearch, sortBy, currentPage, pageSize, dispatch, isAuthenticated])
+  }, [activeTab, selectedFolderFilter, debouncedSearch, sortBy, currentPage, pageSize, dispatch, isAuthenticated])
 
   useEffect(() => {
-    if (isAuthenticated && (activeTab === 'all' || activeTab === 'supabase')) {
-      syncSupabaseContents()
+    if (isAuthenticated) {
+      syncAllContents()
     }
-  }, [syncSupabaseContents, activeTab, isAuthenticated])
+  }, [syncAllContents, isAuthenticated])
 
   // Reset folder filter when switching activeTab if selected folder is no longer valid
   useEffect(() => {
@@ -224,12 +296,53 @@ export default function FileUploadPage() {
   }, [activeTab, availableFolders, selectedFolderFilter])
 
   const handleRefresh = async () => {
-    if (!checkAuth()) return
     setRefreshing(true)
     try {
-      await syncSupabaseContents()
+      const [supabaseRes, googleDriveRes] = await Promise.all([
+        fetchFilesFromSupabase({
+          folder: selectedFolderFilter,
+          search: debouncedSearch,
+          sortBy,
+          page: currentPage,
+          limit: pageSize,
+        }).catch(err => {
+          console.error("Failed to fetch Supabase files on refresh:", err)
+          return { files: [], folders: [], totalCount: 0 }
+        }),
+        fetchFilesFromGoogleDrive({
+          folder: selectedFolderFilter,
+          search: debouncedSearch,
+          sortBy,
+          page: currentPage,
+          limit: pageSize,
+        }).catch(err => {
+          console.error("Failed to fetch Google Drive files on refresh:", err)
+          return { files: [], folders: [], totalCount: 0 }
+        })
+      ])
+
+      if (supabaseRes.folders.length > 0) {
+        setSupabaseFolders(Array.from(new Set(supabaseRes.folders)))
+      }
+      if (googleDriveRes.folders.length > 0) {
+        setGoogleDriveFolders(Array.from(new Set(googleDriveRes.folders)))
+      }
+
+      if (activeTab === 'supabase') {
+        setServerTotalCount(supabaseRes.totalCount)
+      } else if (activeTab === 'google-drive') {
+        setServerTotalCount(googleDriveRes.totalCount)
+      } else {
+        setServerTotalCount(supabaseRes.totalCount + googleDriveRes.totalCount)
+      }
+
+      const otherFiles = filesRef.current.filter(f => f.storage !== 'supabase' && f.storage !== 'google-drive')
+      dispatch(updateFiles([...supabaseRes.files, ...googleDriveRes.files, ...otherFiles]))
+
+      showToast("Storage refreshed successfully", "success")
     } catch (err: any) {
       console.error('Refresh error:', err)
+      showToast(err.message || "Failed to refresh storage contents", "error")
     } finally {
       setTimeout(() => setRefreshing(false), 500)
     }
@@ -244,21 +357,24 @@ export default function FileUploadPage() {
     }
 
     if (selectedFolderFilter !== 'all') {
-      result = result.filter(f => (f.folder || 'files') === selectedFolderFilter)
+      result = result.filter(f => (f.folder || '/') === selectedFolderFilter)
     }
 
-    if (debouncedSearch.trim() && activeTab !== 'supabase') {
+    if (debouncedSearch.trim()) {
       const q = debouncedSearch.toLowerCase()
       result = result.filter(
-        f => f.name.toLowerCase().includes(q) || f.type.toLowerCase().includes(q) || (f.folder && f.folder.toLowerCase().includes(q))
+        f => {
+          if (f.storage === 'supabase' || f.storage === 'google-drive') return true
+          return f.name.toLowerCase().includes(q) || f.type.toLowerCase().includes(q) || (f.folder && f.folder.toLowerCase().includes(q))
+        }
       )
     }
 
     return result
   }, [files, activeTab, selectedFolderFilter, debouncedSearch])
 
-  // Total count calculation (Server-side for Supabase, local for non-Supabase)
-  const totalCount = activeTab === 'supabase' || activeTab === 'all' ? serverTotalCount : processedFiles.length
+  // Total count calculation (Server-side for Supabase/Google Drive, local for non-Supabase/Google Drive)
+  const totalCount = activeTab === 'supabase' || activeTab === 'google-drive' || activeTab === 'all' ? serverTotalCount : processedFiles.length
   const totalPages = Math.ceil(totalCount / pageSize) || 1
   const paginatedFiles = processedFiles
 
@@ -288,7 +404,7 @@ export default function FileUploadPage() {
     } else if (availableFolders.length > 0) {
       setTargetFolder(availableFolders[0])
     } else {
-      setTargetFolder('files')
+      setTargetFolder('/')
     }
     setUploadModalOpen(true)
   }
@@ -299,13 +415,29 @@ export default function FileUploadPage() {
     setCreatingFolder(true)
     setFolderError('')
     try {
-      const createdFolder = await createFolderInSupabase(newFolderName)
-      setDiscoveredFolders(prev => Array.from(new Set([...prev, createdFolder])))
-      setSelectedFolderFilter(createdFolder)
-      setTargetFolder(createdFolder)
-      setNewFolderName('')
-      setCreateFolderModalOpen(false)
-      showToast(`Folder "${createdFolder}" created in Supabase Storage successfully`, 'success')
+      const isGoogleDrive = activeTab === 'google-drive'
+      const sanitizedFolder = newFolderName.trim().replace(/[^a-zA-Z0-9_.-]/g, "_")
+      if (!sanitizedFolder) {
+        throw new Error("Invalid folder name provided")
+      }
+
+      if (isGoogleDrive) {
+        // Just add the new entry in the local state, do not make an API call
+        setGoogleDriveFolders(prev => Array.from(new Set([...prev, sanitizedFolder])))
+        setSelectedFolderFilter(sanitizedFolder)
+        setTargetFolder(sanitizedFolder)
+        setNewFolderName('')
+        setCreateFolderModalOpen(false)
+        showToast(`Folder "${sanitizedFolder}" added locally for Google Drive.`, 'success')
+      } else {
+        const createdFolder = await createFolderInSupabase(newFolderName)
+        setSupabaseFolders(prev => Array.from(new Set([...prev, createdFolder])))
+        setSelectedFolderFilter(createdFolder)
+        setTargetFolder(createdFolder)
+        setNewFolderName('')
+        setCreateFolderModalOpen(false)
+        showToast(`Folder "${createdFolder}" created in Supabase Storage successfully`, 'success')
+      }
     } catch (err: any) {
       setFolderError(err?.message || 'Failed to create folder')
       showToast(err?.message || 'Failed to create folder', 'error')
@@ -317,7 +449,7 @@ export default function FileUploadPage() {
   const handleOpenMoveModal = (file: FileRecord) => {
     if (!checkAuth()) return
     setFileToMove(file)
-    setMoveDestinationFolder(file.folder || 'files')
+    setMoveDestinationFolder(file.folder || '/')
     setCustomMoveFolder('')
     setMoveError('')
     setMoveModalOpen(true)
@@ -343,7 +475,7 @@ export default function FileUploadPage() {
       setMoveModalOpen(false)
       setFileToMove(null)
       showToast(`Moved "${fileToMove.name}" to folder "${finalTargetFolder}" successfully`, 'success')
-      syncSupabaseContents()
+      syncAllContents()
     } catch (err: any) {
       setMoveError(err?.message || 'Failed to move file')
       showToast(err?.message || 'Failed to move file', 'error')
@@ -369,7 +501,7 @@ export default function FileUploadPage() {
       setStagedFiles([])
       setUploadModalOpen(false)
       showToast(`Uploaded ${uploadedRecords.length} file(s) to ${selectedStorage.toUpperCase()} under folder "${targetFolder}" successfully`, 'success')
-      syncSupabaseContents()
+      syncAllContents()
     } catch (err: any) {
       setUploadError(err?.message || 'File upload failed')
       showToast(err?.message || 'File upload failed', 'error')
@@ -404,7 +536,7 @@ export default function FileUploadPage() {
       setDeleteConfirmOpen(false)
       showToast(`Deleted file "${fileToDelete.name}" successfully`, 'success')
       setFileToDelete(null)
-      syncSupabaseContents()
+      syncAllContents()
     } catch (err: any) {
       showToast(`Delete failed: ${err.message}`, 'error')
     } finally {
@@ -504,27 +636,32 @@ export default function FileUploadPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3 sm:pb-4">
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 sm:pb-0 max-w-full scrollbar-none">
               {[
-                { key: 'all', label: `All Storage (${files.length})` },
-                { key: 'supabase', label: `Supabase (${files.filter(f => f.storage === 'supabase').length})` },
-                { key: 's3', label: `Amazon S3 (${files.filter(f => f.storage === 's3').length})` },
-                { key: 'google-drive', label: `Google Drive (${files.filter(f => f.storage === 'google-drive').length})` },
-              ].map(tab => (
-                <Button
-                  key={tab.key}
-                  size="sm"
-                  variant={activeTab === tab.key ? 'filled' : 'text'}
-                  onClick={() => {
-                    setActiveTab(tab.key as any)
-                    setCurrentPage(1)
-                  }}
-                  className={`capitalize text-xs font-semibold py-1.5 px-3 rounded-lg shrink-0 whitespace-nowrap ${activeTab === tab.key
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                { key: 'all', label: `All Storage (${files.length})`, activeClass: 'bg-sky-600 dark:bg-sky-500 text-white shadow-sm' },
+                { key: 'supabase', label: `Supabase (${files.filter(f => f.storage === 'supabase').length})`, activeClass: 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-sm' },
+                { key: 's3', label: `Amazon S3 (${files.filter(f => f.storage === 's3').length})`, activeClass: 'bg-amber-600 dark:bg-amber-500 text-white shadow-sm' },
+                { key: 'google-drive', label: `Google Drive (${files.filter(f => f.storage === 'google-drive').length})`, activeClass: 'bg-blue-600 dark:bg-blue-500 text-white shadow-sm' },
+              ].map(tab => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <Button
+                    key={tab.key}
+                    size="sm"
+                    variant={isActive ? 'filled' : 'outlined'}
+                    onClick={() => {
+                      setActiveTab(tab.key as any)
+                      setCurrentPage(1)
+                    }}
+                    className={`capitalize text-xs sm:text-sm font-bold py-2 px-3.5 rounded-xl shrink-0 whitespace-nowrap transition-all duration-200 flex items-center gap-2 border ${
+                      isActive
+                        ? `${tab.activeClass} border-transparent`
+                        : 'bg-gray-50/50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
-                >
-                  {tab.label}
-                </Button>
-              ))}
+                  >
+                    {getTabIcon(tab.key, isActive)}
+                    {tab.label}
+                  </Button>
+                );
+              })}
             </div>
 
             {/* View Mode & Refresh Toggle */}
@@ -734,11 +871,11 @@ export default function FileUploadPage() {
                       </td>
                       <td className="py-3 px-3 sm:px-4 whitespace-nowrap">
                         <button
-                          onClick={() => handleFolderSelect(file.folder || 'files')}
+                          onClick={() => handleFolderSelect(file.folder || '/')}
                           className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 px-2 py-0.5 rounded-md transition-colors"
                         >
                           <BsFolderSymlink className="h-3 w-3 text-amber-500" />
-                          {file.folder || 'files'}
+                          {file.folder || '/'}
                         </button>
                       </td>
                       <td className="py-3 px-3 sm:px-4 whitespace-nowrap">
@@ -823,11 +960,11 @@ export default function FileUploadPage() {
                     </div>
                     <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 pt-1">
                       <button
-                        onClick={() => handleFolderSelect(file.folder || 'files')}
+                        onClick={() => handleFolderSelect(file.folder || '/')}
                         className="inline-flex items-center gap-1 font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-500/20"
                       >
                         <BsFolderSymlink className="h-3 w-3 text-amber-500" />
-                        {file.folder || 'files'}
+                        {file.folder || '/'}
                       </button>
                       <span>{formatDate(file.timestamp)}</span>
                     </div>
@@ -959,7 +1096,7 @@ export default function FileUploadPage() {
               {fileToMove?.name}
             </Typography>
             <Typography className="text-[11px] text-gray-500 mt-0.5">
-              Current Folder: <span className="font-semibold text-amber-600 dark:text-amber-400">📁 {fileToMove?.folder || 'files'}</span>
+              Current Folder: <span className="font-semibold text-amber-600 dark:text-amber-400">📁 {fileToMove?.folder || '/'}</span>
             </Typography>
           </div>
 
@@ -1026,7 +1163,7 @@ export default function FileUploadPage() {
         className="m-3 min-w-[calc(100%-1.5rem)] sm:min-w-[380px] dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
       >
         <DialogHeader className="text-gray-900 dark:text-white border-b border-gray-100 dark:border-gray-800 pb-3 text-base sm:text-lg flex items-center gap-2">
-          <BsFolderPlus className="h-5 w-5 text-sky-500" /> Create Supabase Folder
+          <BsFolderPlus className="h-5 w-5 text-sky-500" /> Create {activeTab === 'google-drive' ? 'Google Drive' : 'Supabase'} Folder
         </DialogHeader>
 
         <DialogBody className="space-y-4 pt-4 px-4 sm:px-6">
