@@ -2,7 +2,6 @@
 import supabase from "./supabase";
 import { FileRecord, StorageProvider } from "../store/filesSlice";
 
-const EDGE_FUNCTION_URL = import.meta.env.VITE_EDGE_FUNCTION_URL || "";
 const DEFAULT_BUCKET = "files";
 const GCP_STORAGE_API_URL = import.meta.env.VITE_GCP_STORAGE_API_URL || "http://localhost:8080";
 
@@ -141,29 +140,7 @@ export const uploadFilesToStorage = async (
     return uploadedRecords;
   }
 
-  // Edge Function API Call for Amazon S3 / Google Drive
-  if (EDGE_FUNCTION_URL) {
-    const formData = new FormData();
-    files.forEach((f) => formData.append("files", f));
-    formData.append("provider", provider);
-    formData.append("folder", targetFolder);
-
-    const res = await fetch(`${EDGE_FUNCTION_URL}/upload`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!res.ok) {
-      throw new Error(`Edge function upload failed: ${res.statusText}`);
-    }
-
-    const json = await res.json();
-    return json.files as FileRecord[];
-  }
-
-  throw new Error(
-    `${provider.toUpperCase()} Edge Function is not configured yet. Set VITE_EDGE_FUNCTION_URL or deploy your Edge Function.`
-  );
+  return [];
 };
 
 /**

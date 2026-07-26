@@ -36,9 +36,10 @@ jobs:
           npm run build
           cp dist/index.html dist/404.html
         env:
-          VITE_SUPABASE_API_URL: ${{ secrets.VITE_SUPABASE_API_URL }} 
+          VITE_SUPABASE_API_URL: ${{ secrets.VITE_SUPABASE_API_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           BASE_URL: ${{ secrets.BASE_URL }}
+          VITE_GCP_STORAGE_API_URL: ${{ secrets.VITE_GCP_STORAGE_API_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
