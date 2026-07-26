@@ -445,27 +445,6 @@ export const moveFileInStorage = async (
     };
   }
 
-  // Edge Function API Call for S3 / Google Drive file move
-  if (EDGE_FUNCTION_URL) {
-    const res = await fetch(`${EDGE_FUNCTION_URL}/move`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: file.storage,
-        fileId: file.id,
-        path: file.path,
-        targetFolder: cleanTargetFolder,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Edge function move error: ${res.statusText}`);
-    }
-
-    const json = await res.json();
-    return { newPath: json.newPath, newUrl: json.newUrl };
-  }
-
   return { newPath: `${cleanTargetFolder}/${file.name}`, newUrl: file.url || "" };
 };
 
@@ -533,26 +512,6 @@ export const getPresignedUrl = async (
     return json.sharedUrl;
   }
 
-  // Edge Function API Call for Amazon S3 / Google Drive presigned URLs
-  if (EDGE_FUNCTION_URL) {
-    const res = await fetch(`${EDGE_FUNCTION_URL}/presigned-url`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: file.storage,
-        path: file.path,
-        expiresIn: expiresInSeconds,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Edge function presigned URL error: ${res.statusText}`);
-    }
-
-    const json = await res.json();
-    return json.url;
-  }
-
   if (file.storage === "s3") {
     return `https://${file.bucket || "s3-bucket"}.s3.amazonaws.com/${file.path || file.name}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=${expiresInSeconds}`;
   }
@@ -595,22 +554,6 @@ export const deleteFileFromStorage = async (file: FileRecord): Promise<void> => 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       throw new Error(errorData.detail || `Google Drive delete error: ${res.statusText}`);
-    }
-    return;
-  }
-
-  if (EDGE_FUNCTION_URL) {
-    const res = await fetch(`${EDGE_FUNCTION_URL}/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: file.storage,
-        path: file.path,
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Edge function delete error: ${res.statusText}`);
     }
     return;
   }
