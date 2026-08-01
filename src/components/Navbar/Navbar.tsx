@@ -13,7 +13,7 @@ const NAV_LINKS = [
   { label: 'Home', path: '/' },
   { label: 'Dev Tools', path: '/dev-tools' },
   { label: 'Code Share', path: '/code' },
-  { label: 'Notes', path: '/notes' },
+  { label: 'Notes', path: '/notes', protected: true },
   { label: 'Files', path: '/files', protected: true },
   { label: 'Learning', path: '/learning', protected: true },
   {

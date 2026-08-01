@@ -39,11 +39,11 @@ export default function App() {
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
         {/* <Route path="/signup" element={isAuthenticated ? <Navigate to="/" replace /> : <SignupPage />} /> */}
         <Route path="/code" element={<CodeSharingPage />} />
-        <Route path="/notes" element={<NotesPage />} />
         <Route path="/video-downloader" element={<VideoDownloaderPage />} />
 
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
+          <Route path="/notes" element={<NotesPage />} />
           <Route path="/learning" element={<LearningPage />} />
           <Route path="/learning/:id" element={<LearningDetailPage />} />
           <Route path="/files" element={<FileUploadPage />} />
