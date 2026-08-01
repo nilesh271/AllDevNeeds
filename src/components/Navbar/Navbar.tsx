@@ -34,11 +34,11 @@ export default function Navbar() {
 
   return (
     <MTNavbar
-      className="fixed top-0 z-50 max-w-full rounded-none border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm px-4 py-3"
+      className="fixed top-0 z-50 w-full max-w-full rounded-none border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm px-4 lg:pl-6 lg:pr-8 py-3"
       shadow={false}
     >
       {/* ── Desktop layout: 3-column grid so links sit in true center ── */}
-      <div className="max-w-7xl mx-auto hidden lg:grid lg:grid-cols-[auto_1fr_auto] lg:items-center lg:gap-4">
+      <div className="w-full hidden lg:grid lg:grid-cols-[auto_1fr_auto] lg:items-center lg:gap-4">
         {/* Col 1 – Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0 select-none">
           <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-blue-600 rounded-lg flex items-center justify-center text-white font-mono font-bold text-xs">

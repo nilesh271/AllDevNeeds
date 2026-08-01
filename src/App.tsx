@@ -9,7 +9,7 @@ import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 
 import CodeSharingPage from './pages/CodeSharingPage'
-import StickyNotesPage from './pages/StickyNotesPage'
+import NotesPage from './pages/NotesPage'
 import LearningPage from './pages/LearningPage'
 import LearningDetailPage from './pages/LearningDetailPage'
 import AdminPage from './pages/AdminPage'
@@ -39,7 +39,7 @@ export default function App() {
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <LoginPage />} />
         {/* <Route path="/signup" element={isAuthenticated ? <Navigate to="/" replace /> : <SignupPage />} /> */}
         <Route path="/code" element={<CodeSharingPage />} />
-        <Route path="/notes" element={<StickyNotesPage />} />
+        <Route path="/notes" element={<NotesPage />} />
         <Route path="/video-downloader" element={<VideoDownloaderPage />} />
 
         {/* Protected routes */}
